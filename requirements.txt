@@ -1,0 +1,7 @@
+requests
+beautifulsoup4
+python-dotenv
+rich
+PyQt6
+PyQt6-WebEngine
+qrcode[pil]

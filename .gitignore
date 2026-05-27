@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Arquivos de debug
+debug_*.py
+debug_*.html
+debug_*.png
+cobrancas_unifique.csv
+screenshot_app.png
