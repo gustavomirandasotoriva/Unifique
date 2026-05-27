@@ -1,34 +1,31 @@
 import os
 import sys
-import csv
-import webbrowser
 from io import BytesIO
 from dotenv import load_dotenv
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QFrame, QScrollArea, QSizePolicy,
-    QFileDialog, QMessageBox, QDialog, QLineEdit, QProgressBar,
-    QStatusBar, QGraphicsDropShadowEffect,
+    QLabel, QPushButton, QFrame, QScrollArea,
+    QMessageBox, QDialog, QLineEdit, QProgressBar,
+    QStatusBar, QGridLayout,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize, QUrl
-from PyQt6.QtGui import QFont, QColor, QPixmap, QAction, QKeySequence, QPainter, QBrush, QPen
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 load_dotenv()
 import fetcher
 
-# ── Paleta Unifique ──────────────────────────────────────────
-UNI_BLUE   = "#253A76"   # azul principal
-UNI_BLUE2  = "#1a2d5e"   # hover
-UNI_ACCENT = "#0091d5"   # azul claro de destaque
-BG         = "#f4f6fb"   # fundo geral
+UNI_BLUE   = "#253A76"
+UNI_BLUE2  = "#1a2d5e"
+UNI_ACCENT = "#0ea5e9"
+BG         = "#eef2ff"
 CARD_BG    = "#ffffff"
-TEXT_MAIN  = "#1a1a2e"
-TEXT_GRAY  = "#6b7280"
-SUCCESS    = "#16a34a"
-WARNING    = "#dc2626"
-BORDER     = "#e5e7eb"
+TEXT_MAIN  = "#0f172a"
+TEXT_GRAY  = "#64748b"
+SUCCESS    = "#22c55e"
+WARNING    = "#ef4444"
+BORDER     = "#dde3f0"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -67,8 +64,6 @@ class PixThread(QThread):
             self.erro.emit(str(e))
 
 
-
-
 # ──────────────────────────────────────────────────────────────
 # QR Code helper
 # ──────────────────────────────────────────────────────────────
@@ -104,7 +99,6 @@ class PixDialog(QDialog):
         root.setContentsMargins(32, 28, 32, 28)
         root.setSpacing(16)
 
-        # Cabeçalho
         hdr = QHBoxLayout()
         dot = QLabel("●")
         dot.setStyleSheet(f"color:{UNI_ACCENT}; font-size:20px;")
@@ -115,7 +109,6 @@ class PixDialog(QDialog):
         hdr.addStretch()
         root.addLayout(hdr)
 
-        # Valor
         valor = info.get("valor_original", 0) or 0
         juros = info.get("juros_multa", 0) or 0
         dias  = info.get("dias_atraso", 0) or 0
@@ -140,7 +133,6 @@ class PixDialog(QDialog):
 
         root.addWidget(val_box)
 
-        # QR Code
         qr_lbl = QLabel()
         qr_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         px = gerar_qr_pixmap(pix_code)
@@ -150,7 +142,6 @@ class PixDialog(QDialog):
             qr_lbl.setText("QR Code indisponível")
         root.addWidget(qr_lbl)
 
-        # Pix copia e cola
         lbl_cc = QLabel("Pix Copia e Cola")
         lbl_cc.setStyleSheet(f"font-size:12px; font-weight:600; color:{TEXT_GRAY};")
         root.addWidget(lbl_cc)
@@ -168,7 +159,6 @@ class PixDialog(QDialog):
         btn_copiar.setStyleSheet(
             f"background:{UNI_BLUE}; color:white; border:none; border-radius:8px;"
             f"font-size:12px; font-weight:600;"
-            f"QPushButton:hover {{background:{UNI_BLUE2};}}"
         )
         btn_copiar.clicked.connect(self._copiar)
         row_pix.addWidget(self.campo_pix)
@@ -190,16 +180,15 @@ class PixDialog(QDialog):
 
 
 # ──────────────────────────────────────────────────────────────
-# Diálogo Boleto — auto-login no WebEngine, navega ao boleto
+# Diálogo Boleto
 # ──────────────────────────────────────────────────────────────
 class BoletoDialog(QDialog):
-    _LOGIN_URL  = "https://servicos.unifique.com.br/login/in/Lw=="
-    _PORTAL_URL = "https://servicos.unifique.com.br"
+    _LOGIN_URL = "https://servicos.unifique.com.br/login/in/Lw=="
 
     def __init__(self, boleto_url: str, cpf: str, senha: str, parent=None):
         super().__init__(parent)
         self._boleto_url = boleto_url
-        self._cpf  = cpf.replace("'", "")
+        self._cpf   = cpf.replace("'", "")
         self._senha = senha.replace("'", "")
         self._logged = False
 
@@ -211,7 +200,6 @@ class BoletoDialog(QDialog):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # Barra superior
         bar = QWidget()
         bar.setFixedHeight(48)
         bar.setStyleSheet(f"background:{UNI_BLUE};")
@@ -240,7 +228,6 @@ class BoletoDialog(QDialog):
         url = self._view.url().toString()
 
         if not self._logged and ("login" in url or url == self._LOGIN_URL):
-            # Preenche e submete o login via JS
             self._lbl_status.setText("Autenticando…")
             js = f"""
                 (function() {{
@@ -257,7 +244,6 @@ class BoletoDialog(QDialog):
             self._view.page().runJavaScript(js)
 
         elif not self._logged and "login" not in url:
-            # Login concluído — navega ao boleto
             self._logged = True
             self._lbl_status.setText("Carregando boleto…")
             self._view.load(QUrl(self._boleto_url))
@@ -267,11 +253,45 @@ class BoletoDialog(QDialog):
 
 
 # ──────────────────────────────────────────────────────────────
+# Stat Card (resumo no topo)
+# ──────────────────────────────────────────────────────────────
+class StatCard(QFrame):
+    def __init__(self, titulo: str, valor: str, accent: str, parent=None):
+        super().__init__(parent)
+        self.setObjectName("statcard")
+        self.setMinimumWidth(180)
+        self.setFixedHeight(110)
+        self.setStyleSheet(f"""
+            QFrame#statcard {{
+                background:{CARD_BG};
+                border:1px solid {BORDER};
+                border-top: 3px solid {accent};
+                border-radius:12px;
+            }}
+        """)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(20, 14, 20, 14)
+        root.setSpacing(8)
+
+        lbl_title = QLabel(titulo)
+        lbl_title.setStyleSheet(f"font-size:13px; color:{TEXT_GRAY};")
+        root.addWidget(lbl_title)
+
+        self.lbl_valor = QLabel(valor)
+        self.lbl_valor.setStyleSheet(f"font-size:26px; font-weight:700; color:{TEXT_MAIN};")
+        root.addWidget(self.lbl_valor)
+
+    def set_valor(self, valor: str):
+        self.lbl_valor.setText(valor)
+
+
+# ──────────────────────────────────────────────────────────────
 # Card de cobrança
 # ──────────────────────────────────────────────────────────────
 class CobrancaCard(QFrame):
-    pix_clicked    = pyqtSignal(int, int)   # codcliente, codcobranca
-    boleto_clicked = pyqtSignal(object)     # pag dict
+    pix_clicked    = pyqtSignal(int, int)
+    boleto_clicked = pyqtSignal(object)
 
     def __init__(self, dados: list, cabecalho: list, pag: dict, parent=None):
         super().__init__(parent)
@@ -280,82 +300,70 @@ class CobrancaCard(QFrame):
             QFrame#card {{
                 background:{CARD_BG};
                 border:1px solid {BORDER};
+                border-left: 4px solid {UNI_ACCENT};
                 border-radius:12px;
             }}
         """)
-        sombra = QGraphicsDropShadowEffect()
-        sombra.setBlurRadius(16)
-        sombra.setOffset(0, 2)
-        sombra.setColor(QColor(0, 0, 0, 25))
-        self.setGraphicsEffect(sombra)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(20, 16, 20, 16)
-        root.setSpacing(10)
+        root.setContentsMargins(20, 18, 20, 18)
+        root.setSpacing(12)
 
-        # Linha superior: descrição + valor
-        top = QHBoxLayout()
-
-        # Ícone boleto
-        icone = QLabel("🧾")
-        icone.setStyleSheet("font-size:22px;")
-        icone.setFixedWidth(34)
-
-        # Descrição e vencimento
-        info_col = QVBoxLayout()
-        info_col.setSpacing(2)
-
+        # Header: descrição
         desc_idx = next((i for i, h in enumerate(cabecalho) if "desc" in h.lower()), 0)
         desc = dados[desc_idx] if desc_idx < len(dados) else dados[0] if dados else "Cobrança"
-        # Simplifica: pega só até o primeiro "(" ou quebra de linha
         desc_curta = desc.split("(")[0].strip()
 
         lbl_desc = QLabel(desc_curta)
-        lbl_desc.setStyleSheet(f"font-size:14px; font-weight:600; color:{TEXT_MAIN};")
+        lbl_desc.setStyleSheet(f"font-size:13px; color:{TEXT_GRAY};")
         lbl_desc.setWordWrap(True)
+        root.addWidget(lbl_desc)
 
-        venc_idx = next((i for i, h in enumerate(cabecalho) if "venc" in h.lower()), -1)
-        venc = dados[venc_idx] if venc_idx != -1 and venc_idx < len(dados) else ""
-        lbl_venc = QLabel(f"Vencimento: {venc}" if venc else "")
-        lbl_venc.setStyleSheet(f"font-size:12px; color:{TEXT_GRAY};")
-
-        info_col.addWidget(lbl_desc)
-        info_col.addWidget(lbl_venc)
-
-        top.addWidget(icone)
-        top.addLayout(info_col, 1)
-
-        # Valor
+        # Valor grande
         val_idx = next((i for i, h in enumerate(cabecalho) if "valor" in h.lower()), -1)
         valor_txt = dados[val_idx] if val_idx != -1 and val_idx < len(dados) else ""
         lbl_valor = QLabel(valor_txt)
-        lbl_valor.setStyleSheet(f"font-size:20px; font-weight:700; color:{UNI_BLUE};")
-        lbl_valor.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        top.addWidget(lbl_valor)
+        lbl_valor.setStyleSheet(f"font-size:26px; font-weight:700; color:{TEXT_MAIN};")
+        root.addWidget(lbl_valor)
 
-        root.addLayout(top)
+        # Vencimento + badge
+        mid = QHBoxLayout()
+        venc_idx = next((i for i, h in enumerate(cabecalho) if "venc" in h.lower()), -1)
+        venc = dados[venc_idx] if venc_idx != -1 and venc_idx < len(dados) else ""
+        if venc:
+            lbl_venc = QLabel(f"Venc. {venc}")
+            lbl_venc.setStyleSheet(f"font-size:12px; color:{TEXT_GRAY};")
+            mid.addWidget(lbl_venc)
+        mid.addStretch()
+        badge = QLabel("EM ABERTO")
+        badge.setStyleSheet(
+            f"background:#fee2e2; color:{WARNING}; border:1px solid #fca5a5;"
+            f"border-radius:10px; padding:2px 10px; font-size:10px; font-weight:700;"
+        )
+        mid.addWidget(badge)
+        root.addLayout(mid)
 
         # Separador
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color:{BORDER};")
+        sep.setStyleSheet(f"background:{BORDER}; border:none;")
+        sep.setFixedHeight(1)
         root.addWidget(sep)
 
-        # Botões
+        # Botões de ação
         btns = QHBoxLayout()
-        btns.setSpacing(10)
-
-        tem_pix = bool(pag.get("codcliente") and pag.get("codcobranca"))
+        btns.setSpacing(8)
+        tem_pix    = bool(pag.get("codcliente") and pag.get("codcobranca"))
         tem_boleto = bool(pag.get("boleto_key"))
 
         if tem_pix:
             btn_pix = QPushButton("Pagar com Pix")
-            btn_pix.setFixedHeight(36)
+            btn_pix.setFixedHeight(34)
             btn_pix.setStyleSheet(f"""
                 QPushButton {{
                     background:{UNI_BLUE}; color:white;
-                    border:none; border-radius:8px;
-                    font-size:13px; font-weight:600; padding:0 16px;
+                    border:none; border-radius:7px;
+                    font-size:12px; font-weight:600; padding:0 14px;
                 }}
                 QPushButton:hover {{ background:{UNI_BLUE2}; }}
             """)
@@ -366,12 +374,12 @@ class CobrancaCard(QFrame):
 
         if tem_boleto:
             btn_boleto = QPushButton("Ver Boleto")
-            btn_boleto.setFixedHeight(36)
+            btn_boleto.setFixedHeight(34)
             btn_boleto.setStyleSheet(f"""
                 QPushButton {{
                     background:white; color:{UNI_BLUE};
-                    border:2px solid {UNI_BLUE}; border-radius:8px;
-                    font-size:13px; font-weight:600; padding:0 16px;
+                    border:1.5px solid {UNI_BLUE}; border-radius:7px;
+                    font-size:12px; font-weight:600; padding:0 14px;
                 }}
                 QPushButton:hover {{ background:{BG}; }}
             """)
@@ -379,15 +387,6 @@ class CobrancaCard(QFrame):
             btns.addWidget(btn_boleto)
 
         btns.addStretch()
-
-        # Badge status
-        badge = QLabel("EM ABERTO")
-        badge.setStyleSheet(
-            f"background:#fef2f2; color:{WARNING}; border:1px solid #fecaca;"
-            f"border-radius:12px; padding:3px 10px; font-size:11px; font-weight:700;"
-        )
-        btns.addWidget(badge)
-
         root.addLayout(btns)
 
 
@@ -398,8 +397,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Unifique — Central do Assinante")
-        self.setMinimumSize(860, 540)
-        self.resize(980, 620)
+        self.setMinimumSize(920, 580)
+        self.resize(1060, 680)
         self._dados_cb = None
         self._thread = None
         self._pix_thread = None
@@ -415,40 +414,53 @@ class MainWindow(QMainWindow):
 
         # ── Sidebar ─────────────────────────────────────────
         sidebar = QWidget()
-        sidebar.setFixedWidth(220)
+        sidebar.setFixedWidth(230)
         sidebar.setStyleSheet(f"background:{UNI_BLUE};")
         side_layout = QVBoxLayout(sidebar)
         side_layout.setContentsMargins(0, 0, 0, 0)
         side_layout.setSpacing(0)
 
-        # Logo / marca
+        # Logo
         logo_area = QWidget()
-        logo_area.setFixedHeight(80)
-        logo_area.setStyleSheet(f"background:{UNI_BLUE2};")
-        logo_l = QVBoxLayout(logo_area)
-        logo_l.setContentsMargins(20, 0, 20, 0)
-        lbl_logo = QLabel("unifique")
-        lbl_logo.setStyleSheet(
-            "color:white; font-size:22px; font-weight:700; letter-spacing:2px;"
-        )
-        lbl_logo.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        lbl_sub = QLabel("Central do Assinante")
-        lbl_sub.setStyleSheet("color:rgba(255,255,255,0.55); font-size:10px; letter-spacing:1px;")
+        logo_area.setFixedHeight(72)
+        logo_area.setStyleSheet(f"background:{UNI_BLUE};")
+        logo_l = QHBoxLayout(logo_area)
+        logo_l.setContentsMargins(18, 0, 18, 0)
+        logo_l.setSpacing(12)
+
+        icon_box = QLabel("U")
+        icon_box.setFixedSize(38, 38)
+        icon_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_box.setStyleSheet(f"""
+            background:{UNI_ACCENT}; color:white;
+            font-size:18px; font-weight:700; border-radius:8px;
+        """)
+
+        lbl_logo = QLabel("Unifique")
+        lbl_logo.setStyleSheet("color:white; font-size:15px; font-weight:700;")
+
+        logo_l.addWidget(icon_box)
         logo_l.addWidget(lbl_logo)
-        logo_l.addWidget(lbl_sub)
+        logo_l.addStretch()
         side_layout.addWidget(logo_area)
+
+        div = QFrame()
+        div.setFixedHeight(1)
+        div.setStyleSheet("background:rgba(255,255,255,0.1); border:none;")
+        side_layout.addWidget(div)
 
         side_layout.addSpacing(16)
 
-        # Itens de menu
-        self._nav_item(side_layout, "💳", "Cobranças em Aberto", ativo=True)
-        side_layout.addStretch()
+        lbl_menu = QLabel("Menu")
+        lbl_menu.setContentsMargins(20, 0, 0, 0)
+        lbl_menu.setStyleSheet(
+            "color:rgba(255,255,255,0.35); font-size:10px; font-weight:600; letter-spacing:1px;"
+        )
+        side_layout.addWidget(lbl_menu)
+        side_layout.addSpacing(6)
 
-        # Rodapé sidebar
-        rodape = QLabel("v1.0")
-        rodape.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        rodape.setStyleSheet("color:rgba(255,255,255,0.3); font-size:10px; padding:12px;")
-        side_layout.addWidget(rodape)
+        self._nav_item(side_layout, "Cobranças em Aberto", ativo=True)
+        side_layout.addStretch()
 
         layout.addWidget(sidebar)
 
@@ -461,51 +473,44 @@ class MainWindow(QMainWindow):
 
         # Topbar
         topbar = QWidget()
-        topbar.setFixedHeight(64)
+        topbar.setFixedHeight(56)
         topbar.setStyleSheet(f"background:{CARD_BG}; border-bottom:1px solid {BORDER};")
         top_l = QHBoxLayout(topbar)
-        top_l.setContentsMargins(28, 0, 28, 0)
+        top_l.setContentsMargins(20, 0, 20, 0)
+        top_l.setSpacing(12)
 
-        lbl_pagina = QLabel("Cobranças em Aberto")
-        lbl_pagina.setStyleSheet(f"font-size:16px; font-weight:600; color:{TEXT_MAIN};")
+        btn_toggle = QPushButton("☰")
+        btn_toggle.setFixedSize(36, 36)
+        btn_toggle.setStyleSheet(f"""
+            QPushButton {{
+                background:transparent; color:{TEXT_GRAY};
+                border:none; font-size:18px; border-radius:6px;
+            }}
+            QPushButton:hover {{ background:{BG}; }}
+        """)
+        top_l.addWidget(btn_toggle)
 
-        self.btn_atualizar = QPushButton("↻  Atualizar")
-        self.btn_atualizar.setFixedHeight(36)
-        self.btn_atualizar.setFixedWidth(120)
+        top_l.addStretch()
+
+        # Botão atualizar — apenas ícone, lado direito
+        self.btn_atualizar = QPushButton("↻")
+        self.btn_atualizar.setFixedSize(36, 36)
+        self.btn_atualizar.setToolTip("Atualizar cobranças")
         self.btn_atualizar.setStyleSheet(f"""
             QPushButton {{
                 background:{BG}; color:{UNI_BLUE};
                 border:1.5px solid {UNI_BLUE}; border-radius:8px;
-                font-size:13px; font-weight:600;
+                font-size:18px; font-weight:700;
             }}
             QPushButton:hover {{ background:{UNI_BLUE}; color:white; }}
-            QPushButton:disabled {{ color:#aaa; border-color:#ddd; }}
+            QPushButton:disabled {{ color:#b0bec5; border-color:{BORDER}; }}
         """)
         self.btn_atualizar.clicked.connect(self._buscar)
-
-        self.btn_exportar = QPushButton("⬇  Exportar")
-        self.btn_exportar.setFixedHeight(36)
-        self.btn_exportar.setFixedWidth(110)
-        self.btn_exportar.setEnabled(False)
-        self.btn_exportar.setStyleSheet(f"""
-            QPushButton {{
-                background:{BG}; color:{TEXT_GRAY};
-                border:1.5px solid {BORDER}; border-radius:8px;
-                font-size:13px;
-            }}
-            QPushButton:hover {{ background:{BORDER}; }}
-            QPushButton:disabled {{ color:#ccc; border-color:#eee; }}
-        """)
-        self.btn_exportar.clicked.connect(self._exportar_csv)
-
-        top_l.addWidget(lbl_pagina)
-        top_l.addStretch()
         top_l.addWidget(self.btn_atualizar)
-        top_l.addSpacing(8)
-        top_l.addWidget(self.btn_exportar)
+
         main_layout.addWidget(topbar)
 
-        # Loading bar (fina, embaixo do topbar)
+        # Barra de progresso
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
         self.progress.setFixedHeight(3)
@@ -516,20 +521,52 @@ class MainWindow(QMainWindow):
         """)
         main_layout.addWidget(self.progress)
 
-        # Scroll com cards
+        # Scroll
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet(f"border:none; background:{BG};")
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-        self.cards_container = QWidget()
-        self.cards_container.setStyleSheet(f"background:{BG};")
-        self.cards_layout = QVBoxLayout(self.cards_container)
-        self.cards_layout.setContentsMargins(28, 24, 28, 24)
-        self.cards_layout.setSpacing(14)
-        self.cards_layout.addStretch()
+        content = QWidget()
+        content.setStyleSheet(f"background:{BG};")
+        content_l = QVBoxLayout(content)
+        content_l.setContentsMargins(28, 28, 28, 28)
+        content_l.setSpacing(24)
 
-        scroll.setWidget(self.cards_container)
+        # Título da página
+        title_w = QWidget()
+        title_w.setStyleSheet("background:transparent;")
+        tw_l = QVBoxLayout(title_w)
+        tw_l.setContentsMargins(0, 0, 0, 0)
+        tw_l.setSpacing(2)
+        lbl_title = QLabel("Cobranças em Aberto")
+        lbl_title.setStyleSheet(f"font-size:22px; font-weight:700; color:{TEXT_MAIN};")
+        lbl_subtitle = QLabel("Visão geral das suas cobranças — clique nos cards para pagar")
+        lbl_subtitle.setStyleSheet(f"font-size:13px; color:{TEXT_GRAY};")
+        tw_l.addWidget(lbl_title)
+        tw_l.addWidget(lbl_subtitle)
+        content_l.addWidget(title_w)
+
+        # Stat cards
+        stat_row = QHBoxLayout()
+        stat_row.setSpacing(16)
+        self.stat_qtd   = StatCard("Cobranças em Aberto", "—", UNI_ACCENT)
+        self.stat_total = StatCard("Total em Aberto",     "—", WARNING)
+        stat_row.addWidget(self.stat_qtd)
+        stat_row.addWidget(self.stat_total)
+        stat_row.addStretch()
+        content_l.addLayout(stat_row)
+
+        # Grid de cards de cobrança
+        self.cards_outer = QWidget()
+        self.cards_outer.setStyleSheet("background:transparent;")
+        self.cards_layout = QGridLayout(self.cards_outer)
+        self.cards_layout.setSpacing(16)
+        self.cards_layout.setContentsMargins(0, 0, 0, 0)
+        content_l.addWidget(self.cards_outer)
+
+        content_l.addStretch()
+        scroll.setWidget(content)
         main_layout.addWidget(scroll, 1)
 
         # Status bar
@@ -541,40 +578,23 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(main, 1)
 
-        # Menu
-        menu = self.menuBar()
-        menu.setStyleSheet(
-            f"background:{CARD_BG}; color:{TEXT_MAIN}; border-bottom:1px solid {BORDER};"
-        )
-        m_arq = menu.addMenu("Arquivo")
-        for txt, sc, fn in [("Atualizar", "F5", self._buscar),
-                             ("Exportar CSV...", "", self._exportar_csv)]:
-            a = QAction(txt, self)
-            if sc:
-                a.setShortcut(QKeySequence(sc))
-            a.triggered.connect(fn)
-            m_arq.addAction(a)
-        m_arq.addSeparator()
-        s = QAction("Sair", self); s.triggered.connect(self.close); m_arq.addAction(s)
-
-    def _nav_item(self, layout, icon: str, texto: str, ativo=False):
+    def _nav_item(self, layout, texto: str, ativo=False):
         btn = QWidget()
         btn.setFixedHeight(46)
-        cor_bg = "rgba(255,255,255,0.12)" if ativo else "transparent"
         btn.setStyleSheet(f"""
-            QWidget {{ background:{cor_bg}; border-left: 3px solid {'white' if ativo else 'transparent'}; }}
+            QWidget {{
+                background:{'rgba(255,255,255,0.12)' if ativo else 'transparent'};
+                border-left: 3px solid {'white' if ativo else 'transparent'};
+            }}
         """)
         row = QHBoxLayout(btn)
         row.setContentsMargins(20, 0, 20, 0)
         row.setSpacing(12)
-        lbl_ic = QLabel(icon)
-        lbl_ic.setStyleSheet("font-size:16px; border:none; background:transparent;")
         lbl_tx = QLabel(texto)
         lbl_tx.setStyleSheet(
             f"color:{'white' if ativo else 'rgba(255,255,255,0.65)'}; "
             f"font-size:13px; font-weight:{'600' if ativo else '400'}; border:none; background:transparent;"
         )
-        row.addWidget(lbl_ic)
         row.addWidget(lbl_tx)
         row.addStretch()
         layout.addWidget(btn)
@@ -590,7 +610,6 @@ class MainWindow(QMainWindow):
             return
 
         self.btn_atualizar.setEnabled(False)
-        self.btn_exportar.setEnabled(False)
         self.progress.setVisible(True)
         self.status.showMessage("Conectando ao portal Unifique...")
         self._limpar_cards()
@@ -601,10 +620,12 @@ class MainWindow(QMainWindow):
         self._thread.start()
 
     def _limpar_cards(self):
-        while self.cards_layout.count() > 1:
+        while self.cards_layout.count():
             item = self.cards_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+        self.stat_qtd.set_valor("—")
+        self.stat_total.set_valor("—")
 
     def _on_concluido(self, cabecalho, dados, pagamentos):
         self.progress.setVisible(False)
@@ -612,20 +633,35 @@ class MainWindow(QMainWindow):
         self._dados_cb = (cabecalho, dados)
 
         if not dados:
-            lbl = QLabel("Nenhuma cobrança em aberto. ✓")
+            lbl = QLabel("Nenhuma cobrança em aberto ✓")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet(f"font-size:15px; color:{SUCCESS}; padding:40px;")
-            self.cards_layout.insertWidget(0, lbl)
+            self.cards_layout.addWidget(lbl, 0, 0, 1, 2)
+            self.stat_qtd.set_valor("0")
+            self.stat_total.set_valor("R$ 0,00")
             self.status.showMessage("Sem cobranças em aberto.")
             return
+
+        val_idx = next((i for i, h in enumerate(cabecalho) if "valor" in h.lower()), -1)
+        total = 0.0
 
         for i, (linha, pag) in enumerate(zip(dados, pagamentos)):
             card = CobrancaCard(linha, cabecalho, pag)
             card.pix_clicked.connect(self._abrir_pix)
             card.boleto_clicked.connect(self._abrir_boleto)
-            self.cards_layout.insertWidget(i, card)
+            self.cards_layout.addWidget(card, i // 2, i % 2)
 
-        self.btn_exportar.setEnabled(True)
+            if val_idx != -1 and val_idx < len(linha):
+                try:
+                    raw = linha[val_idx].replace("R$", "").replace(".", "").replace(",", ".").strip()
+                    total += float(raw)
+                except Exception:
+                    pass
+
+        self.stat_qtd.set_valor(str(len(dados)))
+        total_fmt = f"R$ {total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        self.stat_total.set_valor(total_fmt)
+
         qtd = len(dados)
         self.status.showMessage(f"  {qtd} cobrança{'s' if qtd != 1 else ''} em aberto encontrada{'s' if qtd != 1 else ''}.")
 
@@ -668,20 +704,6 @@ class MainWindow(QMainWindow):
         senha = os.getenv("UNIFIQUE_SENHA", "").strip()
         dlg = BoletoDialog(url, cpf, senha, self)
         dlg.exec()
-
-    def _exportar_csv(self):
-        if not self._dados_cb:
-            return
-        cab, dados = self._dados_cb
-        caminho, _ = QFileDialog.getSaveFileName(
-            self, "Salvar CSV", "cobrancas_unifique.csv", "CSV (*.csv)")
-        if not caminho:
-            return
-        with open(caminho, "w", newline="", encoding="utf-8-sig") as f:
-            w = csv.writer(f)
-            w.writerow(cab)
-            w.writerows(dados)
-        self.status.showMessage(f"Exportado: {caminho}")
 
 
 def main():
